@@ -470,4 +470,3 @@ L'architecture ci-dessus sera entièrement déployée et configurée automatique
 .\deploy-new.ps1
 ```
 
-Tous les composants (réseau, MongoDB, monitoring, données) seront opérationnels et accessibles via Grafana pour visualisation en temps réel!
