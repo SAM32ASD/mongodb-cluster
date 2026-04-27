@@ -1,0 +1,74 @@
+================================================================
+         DEPLOIEMENT MONGODB CLUSTER - DEMARRAGE RAPIDE
+================================================================
+
+DEUX SCRIPTS PRINCIPAUX:
+
+1. DEPLOYER LE CLUSTER
+   .\deploy-new.ps1
+   Duree: 20-30 minutes
+
+2. DETRUIRE LE CLUSTER
+   .\destroy-clean.ps1
+   Duree: 5-10 minutes
+
+================================================================
+
+DEPLOIEMENT COMPLET:
+
+1. Ouvrir PowerShell dans ce repertoire
+
+2. Executer:
+   .\deploy-new.ps1
+
+3. Confirmer avec "yes"
+
+4. Attendre 25 minutes environ
+
+5. Recuperer les IPs dans CONNEXION-INFO.txt
+
+6. Ouvrir Grafana: http://<monitoring_ip>:3000
+   Login: admin
+   Password: admin123
+
+================================================================
+
+DESTRUCTION COMPLETE:
+
+1. Executer:
+   .\destroy-clean.ps1
+
+2. Confirmer avec "yes"
+
+3. Confirmer avec "DESTROY"
+
+4. Attendre 5-10 minutes
+
+5. Tout est nettoye!
+
+================================================================
+
+CE QUE VOUS OBTENEZ:
+
+- 3 Regions AWS (US, EU, AP)
+- MongoDB Sharde (3 shards)
+- Replication configuree
+- 1.5 Million de documents pre-inseres
+- Grafana + Prometheus
+- Monitoring temps reel
+
+================================================================
+
+POUR PLUS DE DETAILS:
+
+- README-SCRIPTS.md
+- GUIDE-DEPLOIEMENT-COMPLET.md
+- SOLUTION-COMPLETE.md
+
+================================================================
+
+PRET? LANCEZ MAINTENANT:
+
+.\deploy-new.ps1
+
+================================================================

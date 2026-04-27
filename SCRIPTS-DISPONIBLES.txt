@@ -1,0 +1,73 @@
+================================================================
+         SCRIPTS DE GESTION - MongoDB Cluster
+================================================================
+
+3 SCRIPTS DISPONIBLES:
+
+1. deploy-new.ps1 (DEPLOIEMENT)
+   - Deploie toute l'infrastructure
+   - Configure MongoDB + Monitoring
+   - Insere 1.5M documents
+   - Duree: 20-30 minutes
+
+2. destroy-clean.ps1 (DESTRUCTION PROPRE)
+   - Detruit l'infrastructure
+   - Nettoie completement
+   - Avec verifications
+   - Duree: 5-10 minutes
+
+3. destroy-force.ps1 (DESTRUCTION FORCEE) **NOUVEAU**
+   - Version simplifiee et robuste
+   - Reinitialise automatiquement Terraform
+   - Pour urgence ou si destroy-clean.ps1 echoue
+   - Duree: 5-10 minutes
+
+================================================================
+
+UTILISATION:
+
+DEPLOIEMENT:
+  .\deploy-new.ps1
+
+DESTRUCTION NORMALE:
+  .\destroy-clean.ps1
+
+DESTRUCTION FORCEE (en cas de probleme):
+  .\destroy-force.ps1
+
+================================================================
+
+QUAND UTILISER destroy-force.ps1?
+
+- Si destroy-clean.ps1 echoue
+- Si erreur "Inconsistent dependency lock file"
+- Si Terraform n'est pas initialise correctement
+- En cas d'urgence pour tout nettoyer rapidement
+
+================================================================
+
+WORKFLOW RECOMMANDE:
+
+1. Deployer
+   .\deploy-new.ps1
+
+2. Utiliser le cluster...
+
+3. Detruire (methode 1 - normale)
+   .\destroy-clean.ps1
+
+   OU
+
+   Detruire (methode 2 - si probleme)
+   .\destroy-force.ps1
+
+================================================================
+
+NOTES:
+
+- destroy-force.ps1 est plus simple mais moins verbeux
+- destroy-clean.ps1 fait plus de verifications
+- Les deux scripts font la meme chose au final
+- Utilisez destroy-force.ps1 si vous avez des erreurs
+
+================================================================
