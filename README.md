@@ -36,20 +36,19 @@ ssh -i /home/dev/.ssh/id_rsa_mongodb-sharded-cluster bigdata@IP
 ## Déploiement rapide
 
 ```bash
-# 1. Configurer l'environnement
-./scripts/setup-local.sh
+# 1. Déployer
+./deploy-new.ps1
 
-# 2. Déployer
-./scripts/deploy.sh
-
-# 3. Insérer les données
-pip3 install pymongo
-./scripts/insert-data.py
-
-# 4. Vérifier
-./scripts/check-cluster.sh
+# 2. Supprimer
+./destroy-clean.ps1
 
 
+
+# 3. Suppression de forcer
+./destroy-force.ps1
+
+
+# 2. Visualisation des données qui entre dans le base des données
   Dans un autre terminal, exécutez cette boucle qui compte toutes les 10 secondes:
 
   $US_IP = (Get-Content terraform.tfstate | ConvertFrom-Json).outputs.cluster_ips.value.us.public
