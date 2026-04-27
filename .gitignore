@@ -30,3 +30,7 @@ Thumbs.db
 *.tmp
 *.bak
 *~
+
+# Keep documentation images
+!docs/images/*.jpg
+!docs/images/*.png

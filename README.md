@@ -403,3 +403,71 @@ Développé pour démontrer:
 ```powershell
 .\deploy-new.ps1
 ```
+
+---
+
+## 🏛️ Diagramme d'Architecture Complet
+
+![MongoDB Sharded Cluster - AWS Multi-Region Architecture](docs/images/architecture-diagram.jpg)
+
+**Légende du diagramme:**
+
+### **Flux de Données**
+- Collection shardée: `sensordb.readings` (1.5 millions de documents, 1.5GB)
+- Clé de sharding: `sensor_id` (hashed)
+- Distribution automatique sur 3 shards
+
+### **Par Région**
+
+**🌍 US-EAST-1 (Virginie)**
+- VPC: 10.0.0.0/24
+- Instance t3.micro EC2
+- Shard1 (US) - Chunks 1-2 (~500k docs)
+- Mongos Router + Config Server Primary
+
+**🌍 EU-WEST-1 (Irlande)**
+- VPC: 10.1.0.0/24
+- Instance t3.micro EC2
+- Shard2 (EU) - Chunks 3-4 (~500k docs)
+- Mongos Router + Config Server Secondary
+
+**🌍 AP-SOUTH-1 (Mumbai)**
+- VPC: 10.2.0.0/24
+- Instance t3.micro EC2
+- Shard3 (AP) - Chunks 5-6 (~500k docs)
+- Mongos Router + Config Server Secondary
+
+### **Monitoring (US-EAST-1)**
+- Prometheus (port 9090)
+- Grafana (port 3000)
+- MongoDB Exporters sur chaque région
+- Dashboards temps réel
+
+### **Accès**
+- SSH via Internet Gateway
+- Script d'insertion Python: `insert-data.py`
+- Outputs Terraform: IPs et commandes
+
+### **Exemples de Commandes**
+```bash
+# Voir les IPs
+terraform output cluster_ips
+
+# Accéder à Grafana
+http://<monitoring_ip>:3000
+
+# Se connecter via SSH
+ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster bigdata@<ip>
+```
+
+---
+
+## 🎉 Déploiement Prêt!
+
+L'architecture ci-dessus sera entièrement déployée et configurée automatiquement en **20-30 minutes** avec une seule commande:
+
+```powershell
+.\deploy-new.ps1
+```
+
+Tous les composants (réseau, MongoDB, monitoring, données) seront opérationnels et accessibles via Grafana pour visualisation en temps réel!
