@@ -85,7 +85,7 @@ resource "aws_security_group" "mongodb_eu" {
     to_port     = 9216
     protocol    = "tcp"
     cidr_blocks = local.vpc_cidr_list
-    description = "MongoDB Exporter"
+    description = "MongoDB Exporter (intra-VPC)"
   }
 
   egress {
@@ -132,7 +132,7 @@ resource "aws_security_group" "mongodb_ap" {
     to_port     = 9216
     protocol    = "tcp"
     cidr_blocks = local.vpc_cidr_list
-    description = "MongoDB Exporter"
+    description = "MongoDB Exporter (intra-VPC)"
   }
 
   egress {
@@ -141,6 +141,31 @@ resource "aws_security_group" "mongodb_ap" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+# Regles separees pour autoriser l'instance monitoring (US) a scraper les exporters
+# EU et AP via leurs IPs publiques (pas de VPC peering).
+# Separer dans aws_security_group_rule evite un cycle avec aws_instance.monitoring.
+resource "aws_security_group_rule" "exporter_eu_from_monitoring" {
+  provider          = aws.eu
+  type              = "ingress"
+  from_port         = 9216
+  to_port           = 9216
+  protocol          = "tcp"
+  cidr_blocks       = ["${aws_instance.monitoring.public_ip}/32"]
+  security_group_id = aws_security_group.mongodb_eu.id
+  description       = "MongoDB Exporter from monitoring US (public IP)"
+}
+
+resource "aws_security_group_rule" "exporter_ap_from_monitoring" {
+  provider          = aws.ap
+  type              = "ingress"
+  from_port         = 9216
+  to_port           = 9216
+  protocol          = "tcp"
+  cidr_blocks       = ["${aws_instance.monitoring.public_ip}/32"]
+  security_group_id = aws_security_group.mongodb_ap.id
+  description       = "MongoDB Exporter from monitoring US (public IP)"
 }
 
 resource "aws_security_group" "monitoring" {

@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tasklist //FI \"IMAGENAME eq terraform.exe\")",
+      "Bash(tasklist //FI \"IMAGENAME eq terraform*\")",
+      "Bash(terraform output *)",
+      "Bash(ssh *)",
+      "Bash(curl -s \"http://44.213.133.234:9090/api/v1/query?query=mongodb_collstats_storageStats_count\")",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s \"http://44.213.133.234:9090/api/v1/targets\")",
+      "Bash(terraform apply *)",
+      "Bash(curl -s \"http://44.213.133.234:9090/api/v1/query?query=max\\(mongodb_collstats_storageStats_count%7Bdatabase=%22sensordb%22,collection=%22readings%22,rs_nm=%22shard1RS%22%7D\\)\")",
+      "Bash(curl -s \"http://44.213.133.234:9090/api/v1/query?query=max\\(mongodb_collstats_storageStats_count%7Bdatabase=%22sensordb%22,collection=%22readings%22,rs_nm=%22shard2RS%22%7D\\)\")",
+      "Bash(curl -s \"http://44.213.133.234:9090/api/v1/query?query=max\\(mongodb_collstats_storageStats_count%7Bdatabase=%22sensordb%22,collection=%22readings%22,rs_nm=%22shard3RS%22%7D\\)\")",
+      "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(t['labels'].get\\('job','?'\\), t['labels'].get\\('instance','?'\\), t['health'], t.get\\('lastError',''\\)[:80]\\) for t in data['data']['activeTargets']]\")",
+      "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(t['labels'].get\\('job','?'\\), t['labels'].get\\('instance','?'\\), '->', t['health'], '|', t.get\\('lastError',''\\)[:80]\\) for t in data['data']['activeTargets']]\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']['result']; print\\('shard1RS:', d[0]['value'][1] if d else 'NO DATA'\\)\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']['result']; print\\('shard2RS:', d[0]['value'][1] if d else 'NO DATA'\\)\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']['result']; print\\('shard3RS:', d[0]['value'][1] if d else 'NO DATA'\\)\")",
+      "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(t['labels'].get\\('job','?'\\), '->', t['health'], t['scrapeInterval']\\) for t in data['data']['activeTargets']]\")",
+      "Bash(curl -s \"http://44.213.133.234:9090/api/v1/query?query=max%20by%20\\(rs_nm\\)%20\\(rate\\(mongodb_ss_opcounters%7Blegacy_op_type=%22insert%22%7D%5B30s%5D\\)\\)\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']['result']; [print\\('insert rate', r['metric'].get\\('rs_nm','?'\\),':', round\\(float\\(r['value'][1]\\),1\\), 'ops/s'\\) for r in d]\")",
+      "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(t['labels'].get\\('job','?'\\), '->', t['health'], 'interval=', t['scrapeInterval']\\) for t in data['data']['activeTargets']]\")",
+      "Bash(terraform state *)",
+      "Bash(aws ec2 *)"
+    ]
+  }
+}

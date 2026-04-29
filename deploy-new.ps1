@@ -325,6 +325,11 @@ Write-Host ""
 Write-Info "Test de connectivite SSH..."
 Write-Host ""
 
+# Les tests post-deploiement sont informatifs : on ne veut pas qu'un warning SSH
+# ecrit sur stderr (traite comme NativeCommandError par PowerShell) fasse echouer le script.
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+
 $sshTests = @(
     @{Name="US"; IP=$US_IP},
     @{Name="EU"; IP=$EU_IP},
@@ -334,7 +339,7 @@ $sshTests = @(
 
 foreach ($test in $sshTests) {
     Write-Host "  $($test.Name) ($($test.IP))..." -NoNewline
-    $result = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster -o ConnectTimeout=10 -o StrictHostKeyChecking=no bigdata@$($test.IP) "echo 'OK'" 2>$null
+    $result = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR bigdata@$($test.IP) "echo 'OK'" 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-Host " [OK]" -ForegroundColor $GREEN
     } else {
@@ -355,7 +360,7 @@ $mongoTests = @(
 
 foreach ($test in $mongoTests) {
     Write-Host "  $($test.Name)..." -NoNewline
-    $result = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster bigdata@$US_IP "mongosh --port $($test.Port) --quiet --eval 'db.adminCommand({ping: 1})' 2>/dev/null" 2>$null
+    $result = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR bigdata@$US_IP "mongosh --port $($test.Port) --quiet --eval 'db.adminCommand({ping: 1})' 2>/dev/null" 2>$null
     if ($result -match "ok") {
         Write-Host " [OK]" -ForegroundColor $GREEN
     } else {
@@ -364,23 +369,35 @@ foreach ($test in $mongoTests) {
 }
 
 Write-Host ""
-Write-Info "Verification des donnees inserees..."
+Write-Info "Verification de l'insertion (lancee en arriere-plan)..."
 
 try {
-    $docCount = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster bigdata@$US_IP "mongosh --port 27017 --quiet --eval 'db.getSiblingDB(""sensordb"").readings.countDocuments({})' 2>/dev/null" 2>$null
+    $docCount = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR bigdata@$US_IP "mongosh --port 27017 --quiet --eval 'db.getSiblingDB(""sensordb"").readings.countDocuments({})' 2>/dev/null" 2>$null
+    $insertPid = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR bigdata@$US_IP "cat /tmp/insertion.pid 2>/dev/null" 2>$null
+    $isRunning = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR bigdata@$US_IP "pgrep -f insert-data.py > /dev/null && echo yes || echo no" 2>$null
 
     Write-Host "  Documents inseres: " -NoNewline
     Write-Host "$docCount" -ForegroundColor $WHITE
+    Write-Host "  PID insertion:     " -NoNewline
+    Write-Host "$insertPid" -ForegroundColor $WHITE
+    Write-Host "  Etat:              " -NoNewline
+    if ($isRunning -eq "yes") {
+        Write-Host "EN COURS" -ForegroundColor $YELLOW
+    } else {
+        Write-Host "TERMINE" -ForegroundColor $GREEN
+    }
 
     if ([int]$docCount -ge 1500000) {
         Write-Success "Insertion complete (1.5M documents)"
+    } elseif ($isRunning -eq "yes") {
+        Write-Info "Insertion en cours ($docCount docs) - suivre avec .\monitor-insertion.ps1"
     } elseif ([int]$docCount -gt 0) {
-        Write-Warning "Insertion partielle ou en cours ($docCount documents)"
+        Write-Warning "Insertion partielle ($docCount documents) - processus termine prematurement"
     } else {
-        Write-Warning "Aucune donnee inseree (verifiez les logs)"
+        Write-Warning "Aucune donnee inseree (verifiez /tmp/insertion.log)"
     }
 } catch {
-    Write-Warning "Impossible de verifier le nombre de documents"
+    Write-Warning "Impossible de verifier l'etat de l'insertion"
 }
 
 Write-Host ""
@@ -408,6 +425,9 @@ try {
 }
 
 Write-Host ""
+
+# Restaurer le comportement strict apres les tests informatifs
+$ErrorActionPreference = $previousErrorActionPreference
 
 # ============================================================
 # GENERATION DU FICHIER DE CONNEXION

@@ -89,24 +89,99 @@ resource "null_resource" "auto_insert_data" {
       "mongosh --port 27017 --quiet --eval 'sh.status()' || echo 'Sharding en cours'",
       "sleep 5",
 
-      # Lancer l'insertion
+      # Lancer l'insertion en arriere-plan (nohup + & pour detacher du SSH)
+      # Terraform rend la main immediatement, le state est libere, et tu peux
+      # suivre la progression avec monitor-insertion.ps1 pendant qu'elle tourne.
       "echo ''",
-      "echo 'DEMARRAGE DE L INSERTION...'",
+      "echo 'DEMARRAGE DE L INSERTION EN ARRIERE-PLAN...'",
       "echo ''",
       "cd ~/scripts",
-      "python3 insert-data.py localhost 2>&1 | tee /tmp/insertion.log",
-
-      # Afficher un resume
+      "rm -f /tmp/insertion.log /tmp/insertion.pid",
+      "nohup python3 -u insert-data.py localhost > /tmp/insertion.log 2>&1 & echo $! > /tmp/insertion.pid",
+      "disown || true",
+      "sleep 3",
+      "INSERT_PID=$(cat /tmp/insertion.pid 2>/dev/null)",
       "echo ''",
       "echo '==================================================================='",
-      "echo '                  INSERTION TERMINEE'",
+      "echo '         INSERTION LANCEE EN ARRIERE-PLAN'",
       "echo '==================================================================='",
+      "echo \"PID: $INSERT_PID\"",
+      "echo 'Logs: /tmp/insertion.log'",
+      "echo 'Duree estimee: 5-15 minutes'",
       "echo ''",
-      "echo 'Verification de la distribution des donnees...'",
-      "mongosh --port 27017 --quiet --eval 'use sensordb; db.readings.countDocuments({})' | tail -1",
+      "echo 'Suivi temps reel depuis Windows:'",
+      "echo '  .\\monitor-insertion.ps1'",
       "echo ''",
-      "echo 'Les donnees ont ete inserees et distribuees automatiquement'",
+      "echo 'Ou directement en SSH:'",
+      "echo '  tail -f /tmp/insertion.log'",
       "echo ''"
+    ]
+  }
+}
+
+# ============================================================
+# INSERTION CONTINUE (service systemd, tourne jusqu'a destroy)
+# ============================================================
+
+resource "null_resource" "continuous_insertion" {
+  depends_on = [null_resource.auto_insert_data]
+
+  triggers = {
+    script_hash = filemd5("${path.module}/scripts/continuous-insert.py")
+    us_ip       = aws_instance.mongo_us.public_ip
+  }
+
+  connection {
+    type        = "ssh"
+    user        = "bigdata"
+    private_key = file(local.private_key_file)
+    host        = aws_instance.mongo_us.public_ip
+    timeout     = "5m"
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/scripts/continuous-insert.py"
+    destination = "/home/bigdata/scripts/continuous-insert.py"
+  }
+
+  provisioner "file" {
+    content     = <<-EOT
+    [Unit]
+    Description=Continuous MongoDB Insertion (random data)
+    After=network.target mongos.service
+
+    [Service]
+    Type=simple
+    User=bigdata
+    WorkingDirectory=/home/bigdata/scripts
+    ExecStart=/usr/bin/python3 -u /home/bigdata/scripts/continuous-insert.py
+    Restart=always
+    RestartSec=10
+    StandardOutput=append:/tmp/continuous-insert.log
+    StandardError=append:/tmp/continuous-insert.log
+
+    [Install]
+    WantedBy=multi-user.target
+    EOT
+    destination = "/tmp/continuous-insert.service"
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /home/bigdata/scripts/continuous-insert.py",
+      "sudo mv /tmp/continuous-insert.service /etc/systemd/system/continuous-insert.service",
+      "sudo chown root:root /etc/systemd/system/continuous-insert.service",
+      "sudo systemctl daemon-reload",
+      "sudo systemctl enable continuous-insert.service",
+      "sudo systemctl restart continuous-insert.service",
+      "sleep 3",
+      "sudo systemctl status continuous-insert.service --no-pager | head -15",
+      "echo '==================================================================='",
+      "echo '  INSERTION CONTINUE DEMARREE (service systemd)'",
+      "echo '==================================================================='",
+      "echo 'Logs:    tail -f /tmp/continuous-insert.log'",
+      "echo 'Stop:    sudo systemctl stop continuous-insert'",
+      "echo 'Status:  sudo systemctl status continuous-insert'"
     ]
   }
 }
