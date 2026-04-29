@@ -47,14 +47,16 @@ cd C:\Users\<username>\Desktop\lot\mongodb-cluster
 - 3 Config Servers (replica set)
 - 3 Mongos Routers
 - **1.5 million de documents** pré-insérés (~1.5 GB)
+- **Insertion continue** en arrière-plan (service systemd, ~100 docs/s, s'arrête au destroy)
 - Sharding automatique configuré
 
-✅ **Monitoring:**
-- Prometheus (collecte métriques)
-- Grafana (dashboards)
+✅ **Monitoring temps réel (latence 5-10s):**
+- Prometheus (scrape interval 5s, retention 3j)
+- Grafana (dashboards auto-refresh 5s)
   - Dashboard MongoDB (ID 2583)
-  - Dashboard personnalisé
-- Exporters MongoDB sur chaque nœud
+  - Dashboard personnalisé avec panels par shard (US/EU/AP)
+- Exporters MongoDB avec `--collect-all` + `--mongodb.collstats-colls`
+- Scraping cross-region via IPs publiques (pas de VPC peering requis pour monitoring)
 
 ---
 
@@ -70,7 +72,14 @@ Password: admin123
 
 **Dashboards disponibles:**
 - MongoDB Exporter (métriques détaillées)
-- MongoDB Sharded Cluster - Overview (personnalisé)
+- **MongoDB Sharded Cluster - Overview** (personnalisé, refresh 5s, fenêtre 5min) :
+  - Total Documents (sensordb.readings)
+  - Documents par Shard (piechart)
+  - Opérations par Seconde (insert/query/update/delete)
+  - Insertions par Shard (rate 30s)
+  - Connexions actives par Shard
+  - **Shard US / EU / AP** (stats individuels colorés)
+  - **Evolution des documents par Shard** (courbes temps réel)
 
 **Récupérer l'IP de monitoring:**
 ```powershell
@@ -85,9 +94,12 @@ cat CONNEXION-INFO.txt
 
 ## 📈 Monitoring de l'Insertion en Temps Réel
 
-Pendant le déploiement, surveillez l'insertion des données:
+L'insertion initiale (1.5M docs) est lancée **en arrière-plan** (nohup + &), donc Terraform rend la main immédiatement et vous pouvez suivre la progression pendant qu'elle tourne.
 
-### **Option 1: Script de monitoring intégré**
+### **Option 1: Grafana (recommandé)**
+Ouvrir http://<monitoring_ip>:3000 → dashboard **"MongoDB Sharded Cluster - Overview"**. Refresh auto toutes les 5s.
+
+### **Option 2: Script de monitoring intégré**
 ```powershell
 .\monitor-insertion.ps1
 ```
@@ -97,23 +109,25 @@ Choisissez parmi:
 2. **Compteur temps réel** (mise à jour 10s)
 3. **Mode parallèle** (les deux)
 
-### **Option 2: Compteur simple**
-```powershell
-$US_IP = (Get-Content terraform.tfstate | ConvertFrom-Json).outputs.cluster_ips.value.us.public
-
-while ($true) {
-    $count = ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster bigdata@$US_IP "mongosh --port 27017 --quiet --eval 'db.getSiblingDB(\`"sensordb\`").readings.countDocuments({})' 2>/dev/null"
-    
-    $timestamp = Get-Date -Format "HH:mm:ss"
-    Write-Host "[$timestamp] Documents insérés: $count" -ForegroundColor Green
-    
-    Start-Sleep -Seconds 10
-}
-```
-
 ### **Option 3: Logs détaillés**
 ```powershell
+# Insertion initiale (1.5M docs)
 ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster bigdata@<us_ip> "tail -f /tmp/insertion.log"
+
+# Insertion continue (jusqu'au destroy)
+ssh -i ~/.ssh/id_rsa_mongodb-sharded-cluster bigdata@<us_ip> "tail -f /tmp/continuous-insert.log"
+```
+
+### **Contrôle de l'insertion continue**
+```bash
+# Statut
+ssh bigdata@<us_ip> "sudo systemctl status continuous-insert"
+
+# Arrêter
+ssh bigdata@<us_ip> "sudo systemctl stop continuous-insert"
+
+# Redémarrer
+ssh bigdata@<us_ip> "sudo systemctl start continuous-insert"
 ```
 
 ---
@@ -160,7 +174,8 @@ mongodb-cluster/
 │   └── cleanup-obsolete.ps1
 │
 ├── 📂 scripts/
-│   └── insert-data.py           # Script Python insertion
+│   ├── insert-data.py           # Insertion initiale (1.5M docs, one-shot)
+│   └── continuous-insert.py     # Insertion continue (systemd service)
 │
 ├── 📂 templates/
 │   ├── cloud-init-mongodb.yml.tpl
@@ -206,9 +221,9 @@ US-EAST-1 (10.0.0.0/24)  ←─────┐
 | Mongos | 27017 | Router MongoDB |
 | Shard | 27018 | Serveur de données |
 | Config | 27019 | Config server |
-| Prometheus | 9090 | Collecte métriques |
-| Grafana | 3000 | Dashboards |
-| Exporter | 9216 | Métriques MongoDB |
+| Prometheus | 9090 | Collecte métriques (scrape 5s) |
+| Grafana | 3000 | Dashboards (refresh 5s) |
+| Exporter | 9216 | Métriques MongoDB (ouvert à l'IP publique du monitoring pour EU/AP) |
 
 ---
 
@@ -284,6 +299,54 @@ La clé SSH est générée automatiquement si absente:
 
 ---
 
+## ⚡ Dashboard Réactif (Architecture Monitoring)
+
+Le pipeline est optimisé pour une **latence totale de 5-10 secondes** entre insertion et affichage dans Grafana.
+
+### **Pipeline**
+```
+Insertion MongoDB (sensordb.readings)
+        ↓ (immédiat)
+mongodb_exporter expose /metrics sur :9216
+        ↓ (scrape toutes les 5s)
+Prometheus stocke les samples (retention 3j)
+        ↓ (query toutes les 5s)
+Grafana affiche les panels (refresh 5s)
+```
+
+### **Configuration exporter MongoDB**
+Connexion directe au shard (port 27018) avec tous les collectors activés :
+```
+--mongodb.uri=mongodb://localhost:27018/?directConnection=true
+--mongodb.direct-connect=true
+--mongodb.collstats-colls=sensordb.readings
+--collect-all
+```
+
+### **Métriques clés utilisées**
+| Métrique | Usage |
+|----------|-------|
+| `mongodb_collstats_storageStats_count{collection="readings"}` | Nombre de documents par shard |
+| `mongodb_ss_opcounters{legacy_op_type="insert"}` | Taux d'insertions |
+| `mongodb_ss_connections{conn_type="current"}` | Connexions actives |
+
+Le label `rs_nm` (shard1RS/shard2RS/shard3RS) est utilisé pour distinguer les shards (il est toujours présent, contrairement aux labels Prometheus qui peuvent être écrasés).
+
+### **Sécurité réseau**
+Les exporters EU et AP sont scrapés par Prometheus (US) via leurs **IPs publiques**, car les VPCs ne sont pas peerés avec le VPC US. Les security groups `mongodb_eu` et `mongodb_ap` autorisent le port 9216 **uniquement** depuis l'IP publique exacte de l'instance monitoring (règle `/32`).
+
+### **Redéploiement rapide**
+Au lieu de `destroy` + `apply` complet, utilisez :
+```powershell
+# Régénérer prometheus.yml et le dashboard Grafana
+terraform apply -replace="null_resource.install_monitoring" -replace="null_resource.configure_grafana" -auto-approve
+
+# Si les IPs publiques ont changé, également :
+terraform apply -replace="aws_security_group_rule.exporter_eu_from_monitoring" -replace="aws_security_group_rule.exporter_ap_from_monitoring" -auto-approve
+```
+
+---
+
 ## 🐛 Dépannage
 
 ### **Erreur: Terraform not found**
@@ -314,6 +377,34 @@ terraform force-unlock <lock-id>
 # Utiliser la destruction forcée
 .\destroy-force.ps1
 ```
+
+### **Grafana: panels "No data"**
+
+1. **Vérifier que les 3 targets Prometheus sont UP** :
+   ```bash
+   curl -s http://<monitoring_ip>:9090/api/v1/targets | grep -o '"health":"[^"]*"'
+   # Doit retourner 4× "up" (prometheus + 3 shards)
+   ```
+
+2. **Si EU ou AP sont DOWN** (timeout) — le security group est probablement mal configuré (IP publique du monitoring changée) :
+   ```powershell
+   terraform apply -replace="aws_security_group_rule.exporter_eu_from_monitoring" -replace="aws_security_group_rule.exporter_ap_from_monitoring" -auto-approve
+   ```
+
+3. **Vérifier que les métriques `collstats` sont exposées** :
+   ```bash
+   ssh bigdata@<shard_ip> "curl -s localhost:9216/metrics | grep mongodb_collstats_storageStats_count"
+   ```
+   Si rien → l'exporter tourne avec l'ancienne config :
+   ```powershell
+   terraform apply -replace="null_resource.install_exporters" -auto-approve
+   ```
+
+### **Erreur Terraform: "invalid empty string in 'scripts'"**
+Survient avec `provisioner "remote-exec"` quand `inline` contient des chaînes vides `""`. Utiliser un `provisioner "file"` avec `content = <<-EOT` pour les fichiers multi-lignes (ex: unit files systemd).
+
+### **Erreur Terraform: "Cycle: ..."**
+Les `ingress` blocks d'un `aws_security_group` ne peuvent pas référencer un `aws_instance` qui utilise lui-même ce SG. Solution : extraire la règle dans une ressource séparée `aws_security_group_rule` (voir `exporter_eu_from_monitoring` / `exporter_ap_from_monitoring`).
 
 ---
 
@@ -360,14 +451,15 @@ graph TD
     D --> E[Configuration sharding]
     E --> F[Installation monitoring]
     F --> G[Configuration Grafana]
-    G --> H[Insertion 1.5M docs]
-    H --> I[Déploiement terminé]
-    I --> J[Accès Grafana]
-    J --> K[Visualisation données]
-    K --> L[Travail terminé?]
-    L -->|Non| K
-    L -->|Oui| M[destroy-clean.ps1]
-    M --> N[Infrastructure supprimée]
+    G --> H[Insertion 1.5M docs en arriere-plan]
+    H --> I[Demarrage insertion continue systemd]
+    I --> J[Deploiement termine]
+    J --> K[Accès Grafana refresh 5s]
+    K --> L[Visualisation temps reel]
+    L --> M[Travail terminé?]
+    M -->|Non| L
+    M -->|Oui| N[destroy-clean.ps1]
+    N --> O[Infrastructure supprimée]
 ```
 
 ---
